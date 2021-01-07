@@ -5,11 +5,19 @@ except ImportError:
 
 import asn1
 
-from .ring_signature import (RingSignature, SignatureInvalidFormat,
-                             peek_sequence, read_der_int, read_der_octet,
-                             read_der_oid, read_der_tag, seq_to_str,
-                             signature_from_der, signature_from_pem,
-                             str_to_seq)
+from .ring_signature import (
+    RingSignature,
+    SignatureInvalidFormat,
+    peek_sequence,
+    read_der_int,
+    read_der_octet,
+    read_der_oid,
+    read_der_tag,
+    seq_to_str,
+    signature_from_der,
+    signature_from_pem,
+    str_to_seq,
+)
 
 signature_c = (
     0x7CAF9849B6DCE78EA4C78A2C7CE8C64A8F62A92991D9E46B774F83C2F125EBD2

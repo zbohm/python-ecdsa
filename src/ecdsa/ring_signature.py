@@ -119,7 +119,9 @@ def str_to_seq(value: str) -> Sequence:
     return tuple(map(int, value.split(".")))
 
 
-def read_der_tag(decoder: asn1.Decoder, tag_type: asn1.Numbers, message: str) -> Union[int, str]:
+def read_der_tag(
+    decoder: asn1.Decoder, tag_type: asn1.Numbers, message: str
+) -> Union[int, str]:
     """Read integer from decoder."""
     tag, value = decoder.read()
     if tag.nr != tag_type:

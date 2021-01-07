@@ -107,7 +107,9 @@ class RingSignatureFactory:
         xy = hex(point.x())[2:] + hex(point.y())[2:]
         return int(self.hash_fnc(xy.encode()).hexdigest(), 16)
 
-    def data_to_point(self, public_keys: Sequence[Point], message: bytes) -> Point:
+    def data_to_point(
+        self, public_keys: Sequence[Point], message: bytes
+    ) -> Point:
         """Calculate public keys and message into Point.  This is H2 in schema."""
         return functools.reduce(lambda x, y: x + y, public_keys) * int(
             self.hash_fnc(message).hexdigest(), 16
