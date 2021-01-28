@@ -70,8 +70,6 @@
 #     print("Error. Invalid signature.")
 # ```
 
-
-import functools
 from typing import Callable, Sequence
 
 from .curves import Curve, find_curve
@@ -90,30 +88,47 @@ class RingSignatureFactory:
         self.curve = curve
         self.hash_fnc = hash_fnc
         self.hash_oid = get_oid_of_hash_function(hash_fnc)
+        self.buffer_size = (self.curve.order.bit_length() + 7) // 8
 
     def hash_data(
         self,
-        public_keys: Sequence[Point],
+        public_keys_digest: bytes,
         private_image: Point,
         message: bytes,
         gsi_yici: Point,
         hsi_yci: Point,
     ) -> int:
         """Make hash digest from input params. This is H1 in schema."""
-        pubkeys = functools.reduce(lambda x, y: x + y, public_keys)
-        point = (pubkeys + private_image + gsi_yici + hsi_yci) * int(
-            self.hash_fnc(message).hexdigest(), 16
+        concacted = b"".join(
+            (
+                public_keys_digest,
+                self.concat_point_coordinates(private_image),
+                self.concat_point_coordinates(gsi_yici),
+                self.concat_point_coordinates(hsi_yci),
+                self.hash_fnc(message).digest(),
+            )
         )
-        xy = hex(point.x())[2:] + hex(point.y())[2:]
-        return int(self.hash_fnc(xy.encode()).hexdigest(), 16)
+        return int(self.hash_fnc(concacted).hexdigest(), 16)
 
-    def data_to_point(
-        self, public_keys: Sequence[Point], message: bytes
-    ) -> Point:
-        """Calculate public keys and message into Point.  This is H2 in schema."""
-        return functools.reduce(lambda x, y: x + y, public_keys) * int(
-            self.hash_fnc(message).hexdigest(), 16
+    def concat_point_coordinates(self, point: Point) -> bytes:
+        """Return bytes of point coordinates x,y."""
+        return point.x().to_bytes(
+            self.buffer_size, "big"
+        ) + point.y().to_bytes(self.buffer_size, "big")
+
+    def public_keys_to_bytes(self, public_keys: Sequence[Point]) -> bytes:
+        """Return bytes of point coordinates x,y from public keys sequence."""
+        return b"".join(
+            [self.concat_point_coordinates(point) for point in public_keys]
         )
+
+    def public_keys_to_point(
+        self, public_keys: Sequence[Point], case_id: bytes
+    ) -> Point:
+        """Hash public keys into Point. This is H2 in schema."""
+        buff = self.public_keys_to_bytes(public_keys)
+        digest = int.from_bytes(self.hash_fnc(buff + case_id).digest(), "big")
+        return self.curve.generator * digest
 
     def sign(
         self,
@@ -121,6 +136,7 @@ class RingSignatureFactory:
         private_key: Private_key,
         public_keys: Sequence[Public_key],
         private_key_position: int,
+        case_id: bytes = b"",
     ) -> RingSignature:
         """Make ring signature."""
         # # 4 A LSAG Signature Scheme
@@ -140,7 +156,7 @@ class RingSignatureFactory:
         q = self.curve.order
         G = self.curve.generator
         H1 = self.hash_data
-        H2 = self.data_to_point
+        H2 = self.public_keys_to_point
 
         # ## 4.1 Signature Generation
 
@@ -153,10 +169,11 @@ class RingSignatureFactory:
         s = [0] * n
 
         # ### Step 1
-        # Compute *h = H<sub>2</sub>(L, m)* and *ỹ = h<sup>x<sub>π</sub></sup>*.
+        # Compute *h = H<sub>2</sub>(L)* and *ỹ = h<sup>x<sub>π</sub></sup>*.
 
-        h = H2(L, m)
+        h = H2(L, case_id)
         y = h * xπ
+        Lb = self.public_keys_to_bytes(L)  # Precomputed digest of public keys.
 
         # ### Step 2
         # Pick *u ∈<sub>R</sub> Z<sub>q</sub>*, and compute
@@ -164,7 +181,7 @@ class RingSignatureFactory:
         # *c<sub>π+1</sub> = H<sub>1</sub>(L, ỹ, m, g<sup>u</sup>, h<sup>u</sup>)*.
 
         u = randrange(q)
-        c[(π + 1) % n] = H1(L, y, m, G * u, h * u)
+        c[(π + 1) % n] = H1(Lb, y, m, G * u, h * u)
 
         # ### Step 3
         # For *i* = π+1, · · · , *n*, 1, · · · , π−1, pick *s<sub>i</sub> ∈<sub>R</sub> Z<sub>q</sub>* and compute
@@ -175,7 +192,7 @@ class RingSignatureFactory:
         for i in [i for i in range(π + 1, n)] + [i for i in range(π)]:
             s[i] = randrange(q)
             c[(i + 1) % n] = H1(
-                L, y, m, (G * s[i]) + (L[i] * c[i]), (h * s[i]) + (y * c[i])
+                Lb, y, m, (G * s[i]) + (L[i] * c[i]), (h * s[i]) + (y * c[i])
             )
 
         # ### Step 4
@@ -199,6 +216,7 @@ class RingSignatureFactory:
         message: bytes,
         signature: RingSignature,
         public_keys: Sequence[Public_key],
+        case_id: bytes = b"",
     ) -> bool:
         """Verify ring signature."""
         # # 4.2 Signature Verification
@@ -206,7 +224,7 @@ class RingSignatureFactory:
         # ỹ)* on a message *m*  and a list of public keys *L* as follows.
 
         H1 = self.hash_data
-        H2 = self.data_to_point
+        H2 = self.public_keys_to_point
         G = self.curve.generator
 
         m = message
@@ -227,12 +245,13 @@ class RingSignatureFactory:
             return False
 
         # ### Step 1
-        # Compute *h = H<sub>2</sub>(L, m)* and for *i = 1, · · · , n,* compute
+        # Compute *h = H<sub>2</sub>(L)* and for *i = 1, · · · , n,* compute
         # z'<sub>i</sub> = g<sup>s<sub>i</sub></sup> y<sub>i</sub><sup>c<sub>i</sub></sup>,<br>
         # z<sub>i</sub>'' = h<sup>s<sub>i</sub></sup> ỹ<sup>c<sub>i</sub></sup>
         # and then *c<sub>i+1</sub> = H<sub>1</sub>(L, ỹ, m, z<sub>i</sub>', z<sub>i</sub>'')* if *i ≠ n*.
 
-        h = H2(L, m)
+        h = H2(L, case_id)
+        Lb = self.public_keys_to_bytes(L)  # Precomputed digest of public keys.
 
         for i in range(n):
             z1 = (G * s[i]) + (L[i] * c[i])
@@ -242,9 +261,9 @@ class RingSignatureFactory:
             # Check whether *c<sub>1</sub> = H<sub>1</sub>(L, ỹ, m, z<sub>n</sub>', z<sub>n</sub>'')*.
             # If yes, accept. Otherwise, reject.
             if i < n - 1:
-                c[i + 1] = H1(L, y, m, z1, z2)
+                c[i + 1] = H1(Lb, y, m, z1, z2)
             else:
-                return signature.checksum == H1(L, y, m, z1, z2)
+                return signature.checksum == H1(Lb, y, m, z1, z2)
 
         return False
 

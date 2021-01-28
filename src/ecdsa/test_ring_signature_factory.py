@@ -53,12 +53,12 @@ fixed_randrange = (
 )
 
 signature_c = (
-    0x7CAF9849B6DCE78EA4C78A2C7CE8C64A8F62A92991D9E46B774F83C2F125EBD2
+    0x8934A62D0EC1C4CD8E77A30D1FA9860291E1B512D1407898046193F86DC4316F
 )
 signature_s = [
     0x80E7C3865EFE9F6CBE78DD46E23E574F4FCBF7B72E2CFCC820F27EF763C4B7A2,
     0xDA31C1CFAF44CEA455EB32FBF7F4A8C9B0B1B152FB94F087571C602F93FF8DA6,
-    0xD40DEAC948975F9C69C1DF2BFF67C44342A37C3264BCBFD5CCFE4D8998B15CC3,
+    0x897B47E29AB037B1DE3953B2D0997EFE2E757124604DC1CBB5DE1030414579B8,
     0x0052D98BA7B0D046A85535C9D5AB8BCE9D652D4DD30F4A478FBA061989E04CBC,
     0x2E9130E41C8ED6105604837B089D0A4EAA2B81079EAAE2149F2EA79C2C6C16FE,
     0x81007758710D501BCF4CB2238B9FEBEAA2D1C91271419EDDB11C5938C3C7D6E8,
@@ -68,8 +68,8 @@ signature_s = [
     0xE7C78B020A7C5BED0F3A2397714D8EE6E87D8D4D65407841229BBE819186C0DF,
 ]
 key_image = (
-    0xD20F899F3CA64FA7AD81D0621B6387D9F6DC97836FF2B54368E2507B096BCF01,
-    0x6BE92D623EBCFC51B0BF1A626C7EC660106360518B34BAF49E2B38F13EE6E139,
+    0xC38F72D1E01F8E303ADF7A7870F6863B280932520337CEF8231EA822A557C32D,
+    0x0DB849041F31815B315A44677F3A3B0C8CB78164464DA11EE006F61448D366CE,
 )
 
 message = b"Life, the Universe and Everything."
@@ -91,6 +91,8 @@ class TestRingSignatureFactory(unittest.TestCase):
     def setUpClass(cls):
         private_keys, public_keys = build_keys(SECP256k1.generator, 1)
         cls.pub_points = [pubkey.point for pubkey in public_keys]
+        factory = RingSignatureFactory(SECP256k1, hashlib.sha3_256)
+        cls.public_keys_digest = factory.public_keys_to_bytes(cls.pub_points)
         cls.private_keys, cls.public_keys = build_keys(SECP256k1.generator, 10)
 
     def test_hash_data(self):
@@ -111,21 +113,46 @@ class TestRingSignatureFactory(unittest.TestCase):
             0x72DC10578DE8AB021E403DA43E3428CBEF778EBC1E5CD5DE9233BEF627DC3497,
         )
         value = factory.hash_data(
-            self.pub_points, private_image, message, gsi_yici, hsi_yci
+            self.public_keys_digest, private_image, message, gsi_yici, hsi_yci
         )
         self.assertEqual(
             value,
-            0x45E236341267C16D360B6706A1D642912152CF01A52ED7D5F719CF34A07056BF,
+            0x7C7AC4DC6C0EE6625D80104B60336A1EE834DE3429A00CA8DA1572D20738C9E6,
         )
 
-    def test_data_to_point(self):
+    def test_concat_point_coordinates(self):
         factory = RingSignatureFactory(SECP256k1, hashlib.sha3_256)
-        point = factory.data_to_point(self.pub_points, message)
+        point = Point(
+            SECP256k1.curve,
+            0x65C68423CF08DE90A35243F2355DC6E2F5CFE18E01B754AA83C55B8DD3ACC0D,
+            0x2A5D56427281C4FDE01DB96453F44276B82949B204B4016895618AB61345EEAC,
+        )
+        buff = factory.concat_point_coordinates(point)
+        self.assertEqual(
+            buff,
+            b"\x06\\hB<\xf0\x8d\xe9\n5$?#U\xdcn/\\\xfe\x18\xe0\x1buJ\xa8<U\xb8"
+            b"\xdd:\xcc\r*]VBr\x81\xc4\xfd\xe0\x1d\xb9dS\xf4Bv\xb8)I\xb2\x04"
+            b"\xb4\x01h\x95a\x8a\xb6\x13E\xee\xac",
+        )
+
+    def test_public_keys_to_bytes(self):
+        factory = RingSignatureFactory(SECP256k1, hashlib.sha3_256)
+        public_keys_digest = factory.public_keys_to_bytes(self.pub_points)
+        self.assertEqual(
+            public_keys_digest,
+            b"<\r'\x1d\x98\xdc#\xe3\x12\x01\xe1R\xdd\xb0\x80\x96F\x8a@,qNw\x81"
+            b"\x0b\xa8\xec\x1b3v0\x19{E\x82\xa6\xe7\x92\xb7c\x82\x8b\xa0Y\xc3"
+            b"\xbc\xaf\x91\r\xfe\xb9\x03\xdb#\x03w`\x12N-\x011vN",
+        )
+
+    def test_public_keys_to_point(self):
+        factory = RingSignatureFactory(SECP256k1, hashlib.sha3_256)
+        point = factory.public_keys_to_point(self.pub_points, b"")
         self.assertEqual(
             (point.x(), point.y()),
             (
-                0xE525D043906146049BC72F4EA65988DF555BC6AB936939E9A0BFF08426E221AB,
-                0x483F5760CEAF4D71258D10703D75D276D3DA8AEC7E2000C6D71E7D1FECF77448,
+                0xB792061A8294BA0EC6886D70CCB2B1E5AC8BAAE2D6F11A657E538C349B78EC75,
+                0x6B9DF1DB3F95500840E1FA339C512D0DCE5747037967A581EBC0EA5AC65D3B01,
             ),
         )
 
@@ -144,14 +171,14 @@ class TestRingSignatureFactory(unittest.TestCase):
         self.assertOnlySignHeader(signature)
         self.assertEqual(
             signature.checksum,
-            0x1DCDD791136E7C212BC9CCA323FFF0A2B849F7D5019E9D6C30046FB503200918,
+            0xF82AA16B4963FE546739B718C823B4BBC66585E12E7C86EA7F840063DEE030DE,
         )
         self.assertEqual(
             signature.signatures,
             [
                 0x1710911DA40BE3BF831960ED2C3C8885BD5A1DC4D8404D745529A6ECAEA77E05,
                 0xB36FAF519FFBBCB57BD35B554F5DD7AA2373726CCB8360FD9ADA1BBE25059DC9,
-                0x0310E817B6E4602704C944BF58E3BDCCC831CF8239ABE80ECB2B14976204F0D4,
+                0xBAA870E2C92FBB88475892ABB553D4954285FEE8358A5352CEDC8059FD56114B,
                 0xB73AA0008621716F70360D2884C919CA2C12662CE8422D650DFFA0627A9A1F48,
                 0x46A5A26EA838C72B144538046441EDED804B92101822D4AA66BCDF017B0F9DE1,
                 0x86D1FB1B29287BE2EC33294B95673E496D99B92D7BFC69E1E4541D8CCFF9C75C,
@@ -164,8 +191,8 @@ class TestRingSignatureFactory(unittest.TestCase):
         self.assertEqual(
             signature.key_image,
             (
-                0xD20F899F3CA64FA7AD81D0621B6387D9F6DC97836FF2B54368E2507B096BCF01,
-                0x6BE92D623EBCFC51B0BF1A626C7EC660106360518B34BAF49E2B38F13EE6E139,
+                0xC38F72D1E01F8E303ADF7A7870F6863B280932520337CEF8231EA822A557C32D,
+                0xDB849041F31815B315A44677F3A3B0C8CB78164464DA11EE006F61448D366CE,
             ),
         )
 
@@ -393,7 +420,7 @@ class TestRingSignatureFactory(unittest.TestCase):
         self.assertSignature2(signature2)
         self.assertEqual(signature1.key_image, signature2.key_image)
 
-    def test_key_image_equals_for_pubkeys_different_order(self):
+    def test_key_image_not_equals_for_pubkeys_different_order(self):
         factory = RingSignatureFactory(SECP256k1, hashlib.sha3_256)
         with patch(
             "ecdsa.ring_signature_factory.randrange",
@@ -411,9 +438,9 @@ class TestRingSignatureFactory(unittest.TestCase):
         self.assertEqual(mock_randrange1.call_count, 20)
         self.assertSignature(signature1)
         self.assertOnlySignHeader(signature2)
-        self.assertEqual(signature1.key_image, signature2.key_image)
+        self.assertNotEqual(signature1.key_image, signature2.key_image)
 
-    def test_key_image_not_equals_for_other_message(self):
+    def test_key_image_equals_for_other_message(self):
         factory = RingSignatureFactory(SECP256k1, hashlib.sha3_256)
         with patch(
             "ecdsa.ring_signature_factory.randrange",
@@ -433,4 +460,24 @@ class TestRingSignatureFactory(unittest.TestCase):
         self.assertEqual(mock_randrange2.call_count, 10)
         self.assertSignature(signature1)
         self.assertOnlySignHeader(signature2)
+        self.assertEqual(signature1.key_image, signature2.key_image)
+
+    def test_key_image_not_equals_for_other_case_id(self):
+        factory = RingSignatureFactory(SECP256k1, hashlib.sha3_256)
+        with patch(
+            "ecdsa.ring_signature_factory.randrange",
+            side_effect=fixed_randrange,
+        ) as mock_randrange:
+            signature1 = factory.sign(
+                message, self.private_keys[2], self.public_keys, 2
+            )
+            signature2 = factory.sign(
+                message, self.private_keys[2], self.public_keys, 2, b"42"
+            )
+        self.assertEqual(mock_randrange.call_count, 20)
+        self.assertSignature(signature1)
+        self.assertOnlySignHeader(signature2)
         self.assertNotEqual(signature1.key_image, signature2.key_image)
+        self.assertTrue(
+            factory.verify(message, signature2, self.public_keys, b"42")
+        )

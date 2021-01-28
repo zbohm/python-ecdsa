@@ -160,6 +160,7 @@ def peek_sequence(decoder: asn1.Decoder, message: str = "Sequence"):
 #     HashOID    ::= OBJECT IDENTIFIER,
 #     KeyImage   ::= SEQUENCE(SIZE(2)) OF INTEGER,
 #     Checksum   ::= INTEGER,
+#     SignLength ::= INTEGER,
 #     Signatures ::= SEQUENCE OF INTEGER
 # END
 # ```
@@ -190,6 +191,8 @@ def signature_to_der(
     encoder.leave()
     # Checksum
     encoder.write(checksum, asn1.Numbers.Integer)
+    # SignLength
+    encoder.write(len(signatures), asn1.Numbers.Integer)
     # Signatures
     encoder.enter(asn1.Numbers.Sequence)
     for n in signatures:
@@ -229,12 +232,15 @@ def signature_from_der(content: bytes) -> RingSignature:
     # Signature checksum
     checksum = read_der_int(decoder)
     # Sequence of signatures
+    signatures_length = read_der_int(decoder)
     peek_sequence(decoder, "Signatures")
     signatures = []
     decoder.enter()
-    while not decoder.eof():
+    for n in range(signatures_length):
         signatures.append(read_der_int(decoder))
     decoder.leave()
+    if not decoder.eof():
+        raise SignatureInvalidFormat("Unexpect tail data.")
     return RingSignature(
         curve_oid,
         curve.signature_length,
@@ -255,7 +261,7 @@ def signature_from_der(content: bytes) -> RingSignature:
 #    Hash.oid: 2.16.840.1.101.3.4.2.8
 # Key.image.x: 0xd20f899f3ca64fa7ad81d0621b6387d9f6dc97836ff2b54368e2507b096bcf01
 # Key.image.y: 0x6be92d623ebcfc51b0bf1a626c7ec660106360518b34baf49e2b38f13ee6e139
-
+#
 # BApMaXVXZWlXb25nAgEBBgUrgQQACgYJYIZIAWUDBAIIMEUCIQDSD4mfPKZPp62B
 # 0GIbY4fZ9tyXg2/ytUNo4lB7CWvPAQIga+ktYj68/FGwvxpibH7GYBBjYFGLNLr0
 # nis48T7m4TkCIHyvmEm23OeOpMeKLHzoxkqPYqkpkdnka3dPg8LxJevSMIIBWgIh
